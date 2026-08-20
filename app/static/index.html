@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>offline-doc-qa</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --border: #2a2f3a;
+    --text: #e6e8eb;
+    --muted: #8a919e;
+    --accent: #4f8cff;
+    --accent-dim: #2c4a80;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  #ollama-status { font-size: 12px; color: var(--muted); }
+  #ollama-status.ok { color: #4caf7d; }
+  #ollama-status.bad { color: #e05f5f; }
+  main {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+  #left {
+    width: 320px;
+    border-right: 1px solid var(--border);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+  }
+  #right {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    min-width: 0;
+  }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0 0 4px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  #doc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  #doc-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    padding: 8px;
+    border-radius: 6px;
+    background: #1d212b;
+  }
+  #doc-list button {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  #doc-list button:hover { color: #e05f5f; }
+  input[type="file"] { font-size: 12px; color: var(--muted); }
+  button.primary {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button.primary:disabled { background: var(--accent-dim); cursor: not-allowed; }
+  #chat-log {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-bottom: 12px;
+  }
+  .msg { max-width: 720px; }
+  .msg.question { align-self: flex-end; color: var(--muted); font-size: 13px; }
+  .msg.answer { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .sources { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .source {
+    font-size: 12px;
+    color: var(--muted);
+    background: #1d212b;
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .source .meta { color: var(--accent); font-weight: 600; }
+  #ask-form { display: flex; gap: 8px; margin-top: 8px; }
+  #question {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+  #status-line { font-size: 12px; color: var(--muted); min-height: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>offline-doc-qa</h1>
+  <span id="ollama-status">Ollama: 檢查中...</span>
+</header>
+<main>
+  <section id="left">
+    <div class="panel">
+      <h2>上傳文件</h2>
+      <input type="file" id="file-input" accept="application/pdf" />
+      <button class="primary" id="upload-btn" style="margin-top:8px;">上傳 PDF</button>
+      <div id="upload-status" style="font-size:12px;color:var(--muted);margin-top:6px;"></div>
+    </div>
+    <div class="panel" style="flex:1;">
+      <h2>已上傳文件</h2>
+      <ul id="doc-list"></ul>
+    </div>
+  </section>
+  <section id="right">
+    <div id="chat-log"></div>
+    <div id="status-line"></div>
+    <form id="ask-form">
+      <input type="text" id="question" placeholder="針對已上傳的文件提問..." autocomplete="off" />
+      <button class="primary" type="submit">送出</button>
+    </form>
+  </section>
+</main>
+
+<script>
+const API = "";
+
+async function refreshHealth() {
+  const el = document.getElementById("ollama-status");
+  try {
+    const res = await fetch(`${API}/api/health`);
+    const data = await res.json();
+    if (data.ollama_reachable) {
+      el.textContent = "Ollama: 連線正常";
+      el.className = "ok";
+    } else {
+      el.textContent = "Ollama: 無法連線";
+      el.className = "bad";
+    }
+  } catch (err) {
+    el.textContent = "Ollama: 健康檢查失敗";
+    el.className = "bad";
+    console.error("health check failed", err);
+  }
+}
+
+async function refreshDocuments() {
+  const list = document.getElementById("doc-list");
+  try {
+    const res = await fetch(`${API}/api/documents`);
+    const docs = await res.json();
+    list.innerHTML = "";
+    if (docs.length === 0) {
+      list.innerHTML = '<li style="color:var(--muted);">尚未上傳任何文件</li>';
+      return;
+    }
+    for (const doc of docs) {
+      const li = document.createElement("li");
+      const label = document.createElement("span");
+      label.textContent = `${doc.filename} (${doc.page_count} 頁)`;
+      const delBtn = document.createElement("button");
+      delBtn.textContent = "刪除";
+      delBtn.onclick = async () => {
+        try {
+          await fetch(`${API}/api/documents/${doc.id}`, { method: "DELETE" });
+          await refreshDocuments();
+        } catch (err) {
+          console.error("delete failed", err);
+          alert("刪除失敗");
+        }
+      };
+      li.appendChild(label);
+      li.appendChild(delBtn);
+      list.appendChild(li);
+    }
+  } catch (err) {
+    console.error("refresh documents failed", err);
+    list.innerHTML = '<li style="color:#e05f5f;">讀取文件清單失敗</li>';
+  }
+}
+
+document.getElementById("upload-btn").addEventListener("click", async () => {
+  const input = document.getElementById("file-input");
+  const statusEl = document.getElementById("upload-status");
+  if (!input.files || input.files.length === 0) {
+    statusEl.textContent = "請先選擇一個 PDF 檔案";
+    return;
+  }
+  const formData = new FormData();
+  formData.append("file", input.files[0]);
+  statusEl.textContent = "上傳與索引中，可能需要一些時間...";
+  try {
+    const res = await fetch(`${API}/api/documents`, { method: "POST", body: formData });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "上傳失敗");
+    }
+    statusEl.textContent = "上傳成功";
+    input.value = "";
+    await refreshDocuments();
+  } catch (err) {
+    console.error("upload failed", err);
+    statusEl.textContent = `上傳失敗：${err.message}`;
+  }
+});
+
+document.getElementById("ask-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = document.getElementById("question");
+  const question = input.value.trim();
+  if (!question) return;
+
+  const log = document.getElementById("chat-log");
+  const statusLine = document.getElementById("status-line");
+
+  const qDiv = document.createElement("div");
+  qDiv.className = "msg question";
+  qDiv.textContent = question;
+  log.appendChild(qDiv);
+  input.value = "";
+  statusLine.textContent = "思考中...";
+  log.scrollTop = log.scrollHeight;
+
+  try {
+    const res = await fetch(`${API}/api/ask`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "回答失敗");
+    }
+    const data = await res.json();
+
+    const aDiv = document.createElement("div");
+    aDiv.className = "msg answer";
+    const answerText = document.createElement("div");
+    answerText.textContent = data.answer;
+    aDiv.appendChild(answerText);
+
+    if (data.sources && data.sources.length > 0) {
+      const sourcesDiv = document.createElement("div");
+      sourcesDiv.className = "sources";
+      for (const s of data.sources) {
+        const sDiv = document.createElement("div");
+        sDiv.className = "source";
+        sDiv.innerHTML = `<span class="meta">${s.doc_name} · 第 ${s.page} 頁 · score ${s.score.toFixed(3)}</span><br>${s.snippet}`;
+        sourcesDiv.appendChild(sDiv);
+      }
+      aDiv.appendChild(sourcesDiv);
+    }
+    log.appendChild(aDiv);
+    statusLine.textContent = "";
+  } catch (err) {
+    console.error("ask failed", err);
+    statusLine.textContent = `發生錯誤：${err.message}`;
+  }
+  log.scrollTop = log.scrollHeight;
+});
+
+refreshHealth();
+refreshDocuments();
+setInterval(refreshHealth, 15000);
+</script>
+</body>
+</html>
