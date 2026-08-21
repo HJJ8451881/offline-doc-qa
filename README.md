@@ -26,7 +26,9 @@ flowchart LR
 
 ## Demo 截圖
 
-`docs/screenshot.png`（尚未附上——本次開發環境是無 GUI 的 sandbox，沒有瀏覽器可以截圖。已用 `curl` 完整驗證過 API 行為，見下方「驗證結果」，但畫面本身未經視覺確認，實際部署後請補上這張圖）。
+![上傳《世界人權宣言》後提問，回答附五筆來源，第 3 頁正是 Article 6 原文](docs/screenshot.png)
+
+上傳一份 8 頁的公開 PDF，提問 "What does Article 6 of the Universal Declaration of Human Rights say?"，回答正確，來源清單標出檔名、頁碼與相似度分數——排名第二的第 3 頁正是 Article 6 的原文所在。
 
 ## 快速開始
 
@@ -70,7 +72,6 @@ docker compose up
 - **無權限控制 / 無文件隔離**：所有文件共用同一個向量索引，檢索時不會依使用者或文件分類做過濾；多租戶場景需要額外設計 `documents` 表的 owner 欄位與查詢時的過濾條件。
 - **Embedding 呼叫是逐筆序列呼叫**：`embeddings.py` 對 Ollama `/api/embeddings` 一次只送一段文字（Ollama 這支 API 本身不支援 batch），大型 PDF 上傳時索引時間會隨頁數線性增加。
 - **檢索是純向量相似度，沒有做混合檢索或 reranker**：對關鍵字/專有名詞查詢（例如條款編號、法條號碼）有時不如純文字比對準確，見「後續可擴充」。
-- **Demo 截圖尚未附上（未驗證項目）**：本次開發是在沒有 GUI 瀏覽器的環境完成，`docs/screenshot.png` 只留了位置，畫面本身沒有做過視覺驗收，只驗證過 API 回應內容正確。
 - **`docker compose` 的 `db` 服務預設不對外開 5432 埠**：因為開發機上已有其他 PostgreSQL 佔用該埠而移除了對外映射；app 容器透過 docker network 內部連線不受影響，若要用 `psql` 從 host 端連進去除錯，需自行在 `docker-compose.yml` 加回 `ports: ["5432:5432"]`（或改成其他未被佔用的埠）。
 
 ## 後續可擴充
@@ -92,5 +93,5 @@ docker compose up
 ## 驗證結果（誠實記錄，非全部都在 CI 裡自動跑）
 
 - `./test.sh`：13 個測試全數通過（`test_ingest.py` 9 個、`test_rag.py` 4 個）。
-- `docker compose up` 端到端：手動驗證過。上傳一份公開 PDF（聯合國《世界人權宣言》英文版，`https://www.ohchr.org` 公開下載），提問 `"What does Article 6 of the Universal Declaration of Human Rights say?"`，回答內容正確且引用來源正確指向第 3 頁（原文 Article 6 確實在第 3 頁）。`GET /api/documents`、`DELETE /api/documents/{id}`、`GET /api/health`（回報 `ollama_reachable: true`）與靜態首頁也都手動用 `curl` 驗證過會回傳預期結果。
-- 前端畫面本身（瀏覽器實際點擊操作）未經人工視覺驗收，只驗證了它呼叫的 API 行為正確，見上方「已知限制」。
+- `docker compose up` 端到端：驗證過。上傳一份公開 PDF（聯合國《世界人權宣言》英文版，`https://www.ohchr.org` 公開下載），提問 `"What does Article 6 of the Universal Declaration of Human Rights say?"`，回答內容正確且來源清單第二筆指向第 3 頁（原文 Article 6 確實在第 3 頁）。`GET /api/documents`、`DELETE /api/documents/{id}`、`GET /api/health`（回報 `ollama_reachable: true`）與靜態首頁也都驗證過會回傳預期結果。
+- 前端：用 headless Chromium（Playwright）實際操作過完整流程——選檔、按上傳、等索引完成、輸入問題、送出、讀取回答與來源——上方的截圖就是該次操作的產物，不是手工拼的畫面。
